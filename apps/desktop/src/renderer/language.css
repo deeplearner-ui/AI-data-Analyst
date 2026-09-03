@@ -1,0 +1,52 @@
+.brand {
+  width: 340px;
+}
+
+.brand > div:not(.language-toggle) {
+  min-width: 0;
+}
+
+.brand strong,
+.brand small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.language-toggle {
+  display: flex !important;
+  flex: none;
+  flex-direction: row !important;
+  margin-left: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #e8ece8;
+}
+
+.language-toggle button {
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.language-toggle button.active {
+  background: #fff;
+  color: var(--forest);
+  box-shadow: 0 1px 3px #17362f22;
+}
+
+.welcome {
+  position: relative;
+}
+
+.welcome-language {
+  position: absolute;
+  top: 22px;
+  left: 22px;
+}

@@ -1,0 +1,15 @@
+{
+  "name": "ai-data-analyst",
+  "version": "0.1.5",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "pnpm --filter @aida/contracts build && pnpm --filter @aida/desktop dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @aida/contracts test && pnpm --filter @aida/desktop test && pnpm test:python",
+    "test:python": "apps\\sidecar\\.venv\\Scripts\\python.exe -m pytest apps/sidecar/tests",
+    "build:sidecar": "apps\\sidecar\\.venv\\Scripts\\python.exe apps\\sidecar\\build_sidecar.py",
+    "package:win": "pnpm build:sidecar && pnpm --filter @aida/desktop package:win"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    "baseUrl": ".",
+    "paths": { "@aida/contracts": ["../../packages/contracts/src/index.ts"] }
+  },
+  "include": ["src", "electron.vite.config.ts"]
+}
