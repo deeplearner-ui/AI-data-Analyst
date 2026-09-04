@@ -47,7 +47,7 @@ def test_titanic_like_plan_uses_meaningful_fields_and_rich_report(tmp_path: Path
     result = execute_plan(store, plan["id"], "zh-CN")
 
     statistics = result["latest"]["statistics"]
-    assert statistics["method"] == "chi-square"
+    assert statistics["method"] == "fisher"
     assert statistics["columns"] == ["Survived", "Sex"]
     assert "PassengerId" not in result["latest"]["chart"]["title"]
     report = result["latest"]["report"]

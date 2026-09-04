@@ -86,17 +86,9 @@ class DatabaseWriteExecute(DatabaseWritePrepare):
     approval_id: str
 
 
-class ModelProfile(ApiModel):
-    base_url: str
-    model: str
-    api_key: str
-    timeout_seconds: int = Field(default=60, ge=5, le=300)
-    language: Literal["zh-CN", "en"] = "zh-CN"
-
-
 class PlanRequest(DatasetOperation):
     goal: str
-    model: ModelProfile | None = None
+    model: None = None
     include_samples: bool = True
     language: Literal["zh-CN", "en"] = "zh-CN"
 
@@ -144,12 +136,14 @@ class ReportRequest(ApiModel):
 
 class DatasetExportRequest(DatasetOperation):
     format: Literal["csv", "xlsx"] = "csv"
+    acknowledge_personal_data: bool = False
 
 
 class ReportExportRequest(ReportRequest):
     format: Literal["html", "pdf"] = "html"
     version_id: str | None = None
     plan_id: str | None = None
+    acknowledge_personal_data: bool = False
 
 
 class ReproducibilityRequest(ReportRequest):
@@ -157,6 +151,7 @@ class ReproducibilityRequest(ReportRequest):
     plan_id: str | None = None
     include_data: bool = False
     data_format: Literal["csv", "xlsx"] = "csv"
+    acknowledge_personal_data: bool = False
 
 
 def new_id(prefix: str) -> str:

@@ -151,16 +151,40 @@ export interface ApprovalRequest {
   expiresAt: string;
 }
 
+export interface StatisticalComparison {
+  left: string;
+  right: string;
+  statistic: number;
+  pValue: number;
+  adjustedPValue: number;
+  adjustment: string;
+}
+
 export interface StatisticalResult {
-  id: string;
+  id: string | null;
   method: string;
-  assumptions: Record<string, boolean | number | string>;
+  requestedMethod?: string;
+  columns?: string[];
+  status?: "completed" | "warning" | "not-applicable";
+  assumptions: Record<string, unknown>;
   sampleSize: number | Record<string, number>;
   statistic?: number;
+  estimate?: number;
+  estimateLabel?: string;
   effectSize?: number;
   confidenceInterval?: [number, number];
   pValue?: number;
   adjustedPValue?: number;
+  significance?: {
+    alpha: number;
+    confidenceLevel: number;
+    statisticallySignificant: boolean;
+    minimumEffect?: number | null;
+    practicallySignificant?: boolean | null;
+  };
+  recommendationReason?: string;
+  alternatives?: string[];
+  comparisons?: StatisticalComparison[];
   diagnostics: string[];
   interpretation: string;
 }
@@ -201,11 +225,31 @@ export interface ReportDocument {
   updatedAt: string;
 }
 
+export type PrivacyCategory = "email" | "phone" | "cn-id" | "bank-card" | "passport" | "name" | "address" | "date-of-birth" | "account" | "ip-address";
+
+export interface PrivacyFinding {
+  column: string;
+  category: PrivacyCategory;
+  confidence: "high" | "medium";
+  matchCount: number;
+  reasons: Array<"column-name" | "value-pattern">;
+}
+
+export interface PrivacyScanResult {
+  status: "clear" | "warning" | "sensitive";
+  hasPersonalData: boolean;
+  scannedRows: number;
+  totalRows: number;
+  findings: PrivacyFinding[];
+  summary: { highConfidence: number; mediumConfidence: number };
+}
+
 export interface DataPreview {
   columns: ColumnSchema[];
   rows: Record<string, unknown>[];
   rowCount: number;
   truncated: boolean;
+  privacy: PrivacyScanResult;
 }
 
 export interface SidecarHealth {

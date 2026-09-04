@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .models import FileImport, new_id, now_iso
+from .privacy import privacy_scan
 from .store import ProjectStore
 
 
@@ -87,7 +88,7 @@ def preview_frame(frame: pd.DataFrame, limit: int = 100) -> dict[str, Any]:
     safe = frame.head(limit).replace({np.nan: None})
     return {
         "columns": schema_for(frame), "rows": safe.to_dict(orient="records"),
-        "rowCount": len(frame), "truncated": len(frame) > limit,
+        "rowCount": len(frame), "truncated": len(frame) > limit, "privacy": privacy_scan(frame),
     }
 
 

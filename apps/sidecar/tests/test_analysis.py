@@ -47,3 +47,33 @@ def test_additional_ui_statistics_methods_are_executable() -> None:
     assert normality["sampleSize"] == 4
     assert correlation["effectSize"] == correlation["statistic"]
     assert contingency["sampleSize"] == 5
+
+
+
+def test_p0_statistics_reports_suitability_confidence_and_practical_effect() -> None:
+    frame = pd.DataFrame({"left": [10, 11, 12, 13, 14, 15, 16, 17], "right": [1, 2, 3, 4, 5, 6, 7, 8]})
+    result = statistical_test(frame, "welch", ["left", "right"], {"alpha": .05, "confidenceLevel": .95, "minimumEffect": .5})
+    assert result["status"] in {"completed", "warning"}
+    assert result["confidenceInterval"][0] < result["estimate"] < result["confidenceInterval"][1]
+    assert "normality" in result["assumptions"]
+    assert result["significance"]["statisticallySignificant"] is True
+    assert result["significance"]["practicallySignificant"] is True
+
+
+def test_p0_auto_selection_and_multiplicity_adjustment() -> None:
+    categorical = pd.DataFrame({"outcome": ["yes", "yes", "no", "no"], "segment": ["A", "A", "A", "B"]})
+    selected = statistical_test(categorical, "auto", ["outcome", "segment"], {"analysisGoal": "relationship"})
+    assert selected["method"] == "fisher"
+    assert selected["recommendationReason"] == "sparse-2x2-table"
+    groups = pd.DataFrame({"a": [1, 2, 3, 4, 5, 6], "b": [2, 3, 4, 5, 6, 7], "c": [10, 11, 12, 13, 14, 15]})
+    result = statistical_test(groups, "anova", ["a", "b", "c"], {"postHoc": True, "pAdjustment": "holm"})
+    assert len(result["comparisons"]) == 3
+    assert all(item["adjustment"] == "holm" for item in result["comparisons"])
+    assert all(item["adjustedPValue"] >= item["pValue"] for item in result["comparisons"])
+
+
+def test_p0_insufficient_sample_is_explicitly_not_applicable() -> None:
+    frame = pd.DataFrame({"a": [1, None], "b": [2, None]})
+    result = statistical_test(frame, "pearson", ["a", "b"], {"alpha": .05})
+    assert result["status"] == "not-applicable"
+    assert result["alternatives"] == ["collect-more-data"]

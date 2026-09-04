@@ -223,3 +223,9 @@ def chart(frame: pd.DataFrame, kind: str, x: str, y: str | None, color: str | No
     figure = functions[kind](frame, x=x, y=y, color=color, title=title or f"{kind}: {x}")
     payload = figure.to_plotly_json()
     return {"id": new_id("chart"), "title": title or f"{kind}: {x}", "plotly": {"data": payload["data"], "layout": payload["layout"], "config": {"responsive": True, "displaylogo": False}}, "filters": {}}
+
+
+# Preserve the stable implementation for the P0 evidence layer, then expose the
+# enriched implementation under the existing public import.
+legacy_statistical_test = statistical_test
+from .statistical import statistical_test as statistical_test

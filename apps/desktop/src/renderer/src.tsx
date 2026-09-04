@@ -219,10 +219,10 @@ function AppContent() {
     if (response) setPlanTask(response.task);
   }
 
-  async function runStats(method: string, selectedColumns: string[]) {
-    const validCount = method === "normality" ? selectedColumns.length === 1 : ["anova", "kruskal"].includes(method) ? selectedColumns.length >= 2 : selectedColumns.length === 2;
+  async function runStats(method: string, selectedColumns: string[], parameters: JsonMap) {
+    const validCount = method === "auto" ? selectedColumns.length >= 1 : method === "normality" ? selectedColumns.length === 1 : ["anova", "kruskal"].includes(method) ? selectedColumns.length >= 2 : selectedColumns.length === 2;
     if (!validCount) { setError(t("needTwoNumeric")); return; }
-    const result = await action(t("runWelchAction"), () => api<StatisticalResult>("/api/analysis/statistics", { projectDirectory, versionId: activeVersionId, method, columns: selectedColumns, parameters: { alpha: 0.05 } }));
+    const result = await action(t("runWelchAction"), () => api<StatisticalResult>("/api/analysis/statistics", { projectDirectory, versionId: activeVersionId, method, columns: selectedColumns, parameters }));
     if (result) { setStatResult(result); setTab("statistics"); }
   }
 
@@ -252,21 +252,33 @@ function AppContent() {
       return path ? { path, bytes: result.bytes } : null;
     });
     if (saved) {
-      setLastExport(`${saved.path} · ${(saved.bytes / 1024).toFixed(1)} KB`);
-      setLogs((current) => [`${new Date().toLocaleTimeString()} · ${t("exportCompleted")}: ${saved.path}`, ...current]);
+      const filename = saved.path.split(/[\/]/).at(-1) ?? t("exportCompleted");
+      setLastExport(`${filename} · ${(saved.bytes / 1024).toFixed(1)} KB`);
+      setLogs((current) => [`${new Date().toLocaleTimeString()} · ${t("exportCompleted")}: ${filename}`, ...current]);
     }
   }
 
+  function privacyAcknowledgement(required = true): boolean | null {
+    if (!required || !preview?.privacy?.hasPersonalData) return false;
+    return window.confirm(t("privacyExportConfirm")) ? true : null;
+  }
+
   async function exportDataset(format: "csv" | "xlsx") {
-    await saveBinaryExport(t("exportDatasetAction"), () => api<JsonMap>("/api/datasets/export", { projectDirectory, versionId: activeVersionId, format }));
+    const acknowledgePersonalData = privacyAcknowledgement();
+    if (acknowledgePersonalData === null) return;
+    await saveBinaryExport(t("exportDatasetAction"), () => api<JsonMap>("/api/datasets/export", { projectDirectory, versionId: activeVersionId, format, acknowledgePersonalData }));
   }
 
   async function exportFormattedReport(format: "html" | "pdf", sections: JsonMap[], template: ReportTemplate) {
-    await saveBinaryExport(t("buildReportAction"), () => api<JsonMap>("/api/reports/export", { projectDirectory, title: `${project?.name ?? t("defaultReportName")}${t("reportSuffix")}`, sections, language: locale, template, format, versionId: activeVersionId, planId: plan?.id }));
+    const acknowledgePersonalData = privacyAcknowledgement();
+    if (acknowledgePersonalData === null) return;
+    await saveBinaryExport(t("buildReportAction"), () => api<JsonMap>("/api/reports/export", { projectDirectory, title: `${project?.name ?? t("defaultReportName")}${t("reportSuffix")}`, sections, language: locale, template, format, versionId: activeVersionId, planId: plan?.id, acknowledgePersonalData }));
   }
 
   async function exportReproducibility(includeData: boolean, dataFormat: "csv" | "xlsx", sections: JsonMap[], template: ReportTemplate) {
-    await saveBinaryExport(t("exportBundleAction"), () => api<JsonMap>("/api/reports/reproducibility", { projectDirectory, title: `${project?.name ?? t("defaultReportName")}${t("reportSuffix")}`, sections, language: locale, template, versionId: activeVersionId, planId: plan?.id, includeData, dataFormat }));
+    const acknowledgePersonalData = privacyAcknowledgement(includeData);
+    if (acknowledgePersonalData === null) return;
+    await saveBinaryExport(t("exportBundleAction"), () => api<JsonMap>("/api/reports/reproducibility", { projectDirectory, title: `${project?.name ?? t("defaultReportName")}${t("reportSuffix")}`, sections, language: locale, template, versionId: activeVersionId, planId: plan?.id, includeData, dataFormat, acknowledgePersonalData }));
   }
 
   if (!project) return <Welcome busy={busy} error={error} onCreate={createProject} onOpen={openProject} locale={locale} onLocaleChange={changeLocale} />;
@@ -295,7 +307,7 @@ function AppContent() {
         {tab === "clean" && <CleanTab preview={preview} impact={cleanPreview} busy={!!busy} onPreview={previewCleaning} onApply={applyCleaning} />}
         {tab === "audit" && <AuditTab report={audit} onRun={runAudit} />}
         {tab === "eda" && <EdaTab result={edaResult} onRun={runEda} />}
-        {tab === "statistics" && <StatsTab result={statResult} columns={columns} busy={!!busy} onRun={runStats} />}
+        {tab === "statistics" && <StatsTab result={statResult} columns={columns} profile={semanticProfile} busy={!!busy} onRun={runStats} />}
         {tab === "code" && <CodeTab code={code} setCode={setCode} result={codeResult} onRun={runCode} />}
         {tab === "chart" && <ChartTab artifact={chart} onCreate={createChart} />}
         {tab === "report" && <ReportTab markdown={reportMarkdown} setMarkdown={editReport} sections={reportSections()} structured={!!reportDocument?.sections?.length} busy={!!busy} activeVersionId={activeVersionId} lastExport={lastExport} onExportDataset={exportDataset} onExportReport={exportFormattedReport} onExportBundle={exportReproducibility} />}
@@ -364,7 +376,7 @@ function Empty({ title, body, action, onClick }: { title: string; body: string; 
 function DataTab({ preview, onAudit, onClean }: { preview: DataPreview | null; onAudit: () => void; onClean: () => void }) {
   const { t } = useI18n();
   if (!preview) return <Empty title={t("importFirst")} body={t("importFirstBody")} action={t("selectDataFile")} onClick={() => document.querySelector<HTMLButtonElement>(".top-actions .primary")?.click()} />;
-  return <><div className="canvas-header"><div><p className="eyebrow">DATASET OVERVIEW</p><h2>{t("dataPreview")}</h2></div><div><button className="ghost" onClick={onClean}>{t("configureCleaning")}</button><button className="primary" onClick={onAudit}>{t("runAudit")}</button></div></div><div className="metric-row"><Metric label={t("totalRows")} value={preview.rowCount.toLocaleString()} /><Metric label={t("fieldCount")} value={String(preview.columns.length)} /><Metric label={t("previewStatus")} value={preview.truncated ? t("first100") : t("complete")} /></div><div className="table-wrap"><table><thead><tr>{preview.columns.map((column) => <th key={column.name}>{column.name}<small>{column.dtype}</small></th>)}</tr></thead><tbody>{preview.rows.map((row, index) => <tr key={index}>{preview.columns.map((column) => <td key={column.name}>{String(row[column.name] ?? "—")}</td>)}</tr>)}</tbody></table></div></>;
+  return <><div className="canvas-header"><div><p className="eyebrow">DATASET OVERVIEW</p><h2>{t("dataPreview")}</h2></div><div><button className="ghost" onClick={onClean}>{t("configureCleaning")}</button><button className="primary" onClick={onAudit}>{t("runAudit")}</button></div></div>{preview.privacy && <section className={`privacy-scan ${preview.privacy.status}`}><div><strong>{preview.privacy.hasPersonalData ? t("privacyRiskTitle") : t("privacyClearTitle")}</strong><p>{preview.privacy.hasPersonalData ? t("privacyRiskHint") : t("privacyClearHint")}</p><small>{t("privacyScanned")} {preview.privacy.scannedRows.toLocaleString()} / {preview.privacy.totalRows.toLocaleString()} {t("rows")} · {preview.privacy.findings.length} {t("privacyFindings")}</small></div>{preview.privacy.findings.length > 0 && <div className="privacy-findings">{preview.privacy.findings.map((finding) => <span key={`${finding.column}-${finding.category}`}><strong>{finding.column}</strong>{finding.category} · {finding.confidence} · {finding.matchCount}</span>)}</div>}</section>}<div className="metric-row"><Metric label={t("totalRows")} value={preview.rowCount.toLocaleString()} /><Metric label={t("fieldCount")} value={String(preview.columns.length)} /><Metric label={t("previewStatus")} value={preview.truncated ? t("first100") : t("complete")} /></div><div className="table-wrap"><table><thead><tr>{preview.columns.map((column) => <th key={column.name}>{column.name}<small>{column.dtype}</small></th>)}</tr></thead><tbody>{preview.rows.map((row, index) => <tr key={index}>{preview.columns.map((column) => <td key={column.name}>{String(row[column.name] ?? "—")}</td>)}</tr>)}</tbody></table></div></>;
 }
 
 function CleanTab({ preview, impact, busy, onPreview, onApply }: { preview: DataPreview | null; impact: JsonMap | null; busy: boolean; onPreview: (operations: JsonMap[]) => void; onApply: (operations: JsonMap[]) => void }) {
@@ -404,19 +416,55 @@ function EdaTab({ result, onRun }: { result: EdaResult | null; onRun: () => void
 
 function formatNumber(value: number | null | undefined): string { return value === null || value === undefined ? "—" : Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 }); }
 
-function StatsTab({ result, columns, busy, onRun }: { result: StatisticalResult | null; columns: DataPreview["columns"]; busy: boolean; onRun: (method: string, columns: string[]) => void }) {
+function StatsTab({ result, columns, profile, busy, onRun }: { result: StatisticalResult | null; columns: DataPreview["columns"]; profile: SemanticProfile | null; busy: boolean; onRun: (method: string, columns: string[], parameters: JsonMap) => void }) {
   const { locale, t } = useI18n();
-  const methods: Array<[string, MessageKey]> = [["welch", "welchTest"], ["t-test", "tTest"], ["paired-t", "pairedT"], ["mann-whitney", "mannWhitney"], ["wilcoxon", "wilcoxon"], ["normality", "normality"], ["pearson", "pearson"], ["spearman", "spearman"], ["kendall", "kendall"], ["anova", "anova"], ["kruskal", "kruskal"], ["chi-square", "chiSquare"], ["fisher", "fisher"]];
-  const [method, setMethod] = useState("welch");
+  const labels = locale === "zh-CN"
+    ? { auto: "自动选择（推荐）", goal: "分析目的", relationship: "关系分析", independent: "独立样本比较", paired: "配对样本比较", alpha: "显著性水平 α", confidence: "置信水平", effect: "最小实际效应", adjustment: "多重比较校正", suitability: "方法适用性", estimate: "估计值", interval: "置信区间", assumptions: "适用条件检查", alternatives: "替代建议", significant: "统计显著", comparisons: "校正后事后比较", pass: "适用", warning: "需复核", unavailable: "不适用" }
+    : { auto: "Automatic selection (recommended)", goal: "Analysis purpose", relationship: "Relationship", independent: "Independent comparison", paired: "Paired comparison", alpha: "Significance α", confidence: "Confidence level", effect: "Minimum practical effect", adjustment: "Multiple-testing adjustment", suitability: "Suitability", estimate: "Estimate", interval: "Confidence interval", assumptions: "Assumption checks", alternatives: "Alternatives", significant: "Statistically significant", comparisons: "Adjusted post-hoc comparisons", pass: "Suitable", warning: "Review", unavailable: "Not applicable" };
+  const methods: Array<[string, string]> = [["auto", labels.auto], ["welch", t("welchTest")], ["t-test", t("tTest")], ["paired-t", t("pairedT")], ["mann-whitney", t("mannWhitney")], ["wilcoxon", t("wilcoxon")], ["normality", t("normality")], ["pearson", t("pearson")], ["spearman", t("spearman")], ["kendall", t("kendall")], ["anova", t("anova")], ["kruskal", t("kruskal")], ["chi-square", t("chiSquare")], ["fisher", t("fisher")]];
+  const [method, setMethod] = useState("auto");
+  const [goal, setGoal] = useState("relationship");
   const [selected, setSelected] = useState<string[]>([]);
+  const [alpha, setAlpha] = useState("0.05");
+  const [confidence, setConfidence] = useState("0.95");
+  const [minimumEffect, setMinimumEffect] = useState("0.2");
+  const [adjustment, setAdjustment] = useState("holm");
   const numeric = columns.filter((column) => column.semanticType === "numeric");
-  const available = ["chi-square", "fisher"].includes(method) ? columns : numeric;
+  const available = ["auto", "chi-square", "fisher"].includes(method) ? columns : numeric;
   const requiredCount = method === "normality" ? 1 : 2;
-  useEffect(() => { setSelected((current) => { const valid = current.filter((name) => available.some((column) => column.name === name)); return valid.length ? valid : available.slice(0, requiredCount).map((column) => column.name); }); }, [method, columns.map((column) => column.name).join("|")]);
+  useEffect(() => {
+    setSelected((current) => {
+      const valid = current.filter((name) => available.some((column) => column.name === name));
+      if (valid.length) return valid;
+      if (method === "auto" && profile?.targetColumn && profile.categoricalColumns[0]) return [profile.targetColumn, profile.categoricalColumns[0]];
+      const preferred = method === "auto" && profile?.numericColumns.length ? profile.numericColumns : available.map((column) => column.name);
+      return preferred.slice(0, requiredCount);
+    });
+  }, [method, columns.map((column) => column.name).join("|"), profile?.updatedAt]);
   const toggleColumn = (name: string) => setSelected((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
-  return <><div className="canvas-header"><div><p className="eyebrow">INFERENCE</p><h2>{t("statistics")}</h2><p className="subtle">{t("statsRequirement")}</p></div><button className="primary" disabled={busy} onClick={() => onRun(method, selected)}>{t("runWelch")}</button></div><div className="stats-config"><label><span className="field-label">{t("selectMethod")}</span><select value={method} onChange={(event) => { setMethod(event.target.value); setSelected([]); }}>{methods.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label><div><span className="field-label">{t("selectedFields")}</span><div className="field-picker compact">{available.map((column) => <label key={column.name} className={selected.includes(column.name) ? "selected" : ""}><input type="checkbox" checked={selected.includes(column.name)} onChange={() => toggleColumn(column.name)} /><span><strong>{column.name}</strong><small>{column.dtype}</small></span></label>)}</div></div></div><p className="subtle stats-selection">{t("comparePrefix")}{selected.join(" / ") || t("noNumeric")}</p>{result ? <div className="result-grid"><Metric label={t("method")} value={result.method} /><Metric label={t("statistic")} value={result.statistic?.toFixed(4) ?? "—"} /><Metric label={t("pValue")} value={result.pValue?.toPrecision(4) ?? "—"} /><Metric label={t("effectSize")} value={result.effectSize?.toFixed(4) ?? "—"} /><div className="interpretation"><strong>{t("interpretation")}</strong><p>{translateBackendMessage(locale, result.interpretation)}</p><small>{t("statsCaution")}</small></div></div> : <div className="assistant-note">{t("statsBody")}</div>}</>;
+  const run = () => onRun(method, selected, { alpha: Number(alpha), confidenceLevel: Number(confidence), minimumEffect: Number(minimumEffect), analysisGoal: goal, pAdjustment: adjustment, postHoc: true });
+  const statusLabel = result?.status === "warning" ? labels.warning : result?.status === "not-applicable" ? labels.unavailable : labels.pass;
+  const interval = result?.confidenceInterval ? `[${formatNumber(result.confidenceInterval[0])}, ${formatNumber(result.confidenceInterval[1])}]` : "—";
+  return <><div className="canvas-header"><div><p className="eyebrow">INFERENCE · EVIDENCE</p><h2>{t("statistics")}</h2><p className="subtle">{t("statsRequirement")}</p></div><button className="primary" disabled={busy} onClick={run}>{t("runWelch")}</button></div>
+    <div className="stats-config evidence-config">
+      <label><span className="field-label">{t("selectMethod")}</span><select value={method} onChange={(event) => { setMethod(event.target.value); setSelected([]); }}>{methods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      {method === "auto" && <label><span className="field-label">{labels.goal}</span><select value={goal} onChange={(event) => setGoal(event.target.value)}><option value="relationship">{labels.relationship}</option><option value="independent-comparison">{labels.independent}</option><option value="paired-comparison">{labels.paired}</option></select></label>}
+      <label><span className="field-label">{labels.alpha}</span><input type="number" min="0.001" max="0.2" step="0.01" value={alpha} onChange={(event) => setAlpha(event.target.value)} /></label>
+      <label><span className="field-label">{labels.confidence}</span><input type="number" min="0.8" max="0.999" step="0.01" value={confidence} onChange={(event) => setConfidence(event.target.value)} /></label>
+      <label><span className="field-label">{labels.effect}</span><input type="number" min="0" step="0.05" value={minimumEffect} onChange={(event) => setMinimumEffect(event.target.value)} /></label>
+      <label><span className="field-label">{labels.adjustment}</span><select value={adjustment} onChange={(event) => setAdjustment(event.target.value)}><option value="holm">Holm</option><option value="fdr_bh">Benjamini–Hochberg</option><option value="bonferroni">Bonferroni</option></select></label>
+      <div className="stats-fields"><span className="field-label">{t("selectedFields")}</span><div className="field-picker compact">{available.map((column) => <label key={column.name} className={selected.includes(column.name) ? "selected" : ""}><input type="checkbox" checked={selected.includes(column.name)} onChange={() => toggleColumn(column.name)} /><span><strong>{column.name}</strong><small>{column.dtype}</small></span></label>)}</div></div>
+    </div>
+    <p className="subtle stats-selection">{t("comparePrefix")}{selected.join(" / ") || t("noNumeric")}</p>
+    {result ? <div className="evidence-result">
+      <div className="metric-row"><Metric label={t("method")} value={result.method} /><Metric label={labels.suitability} value={statusLabel} /><Metric label={labels.estimate} value={formatNumber(result.estimate)} /><Metric label={labels.interval} value={interval} /></div>
+      <div className="metric-row"><Metric label={t("statistic")} value={formatNumber(result.statistic)} /><Metric label={t("pValue")} value={result.pValue?.toPrecision(4) ?? "—"} /><Metric label={t("effectSize")} value={formatNumber(result.effectSize)} /><Metric label={labels.significant} value={result.significance?.statisticallySignificant ? "✓" : "—"} /></div>
+      <div className={`evidence-status ${result.status ?? "completed"}`}><strong>{labels.suitability}: {statusLabel}</strong><span>{result.recommendationReason}</span>{result.alternatives?.length ? <span>{labels.alternatives}: {result.alternatives.join(" / ")}</span> : null}</div>
+      <details className="assumption-panel" open={result.status === "warning"}><summary>{labels.assumptions}</summary><pre>{JSON.stringify(result.assumptions, null, 2)}</pre></details>
+      {!!result.comparisons?.length && <div className="table-wrap comparison-table"><h3>{labels.comparisons}</h3><table><thead><tr><th>A</th><th>B</th><th>p</th><th>adjusted p</th><th>{labels.adjustment}</th></tr></thead><tbody>{result.comparisons.map((item) => <tr key={`${item.left}-${item.right}`}><td>{item.left}</td><td>{item.right}</td><td>{item.pValue.toPrecision(4)}</td><td>{item.adjustedPValue.toPrecision(4)}</td><td>{item.adjustment}</td></tr>)}</tbody></table></div>}
+      <div className="interpretation"><strong>{t("interpretation")}</strong><p>{translateBackendMessage(locale, result.interpretation)}</p><small>{t("statsCaution")}</small></div>
+    </div> : <div className="assistant-note">{t("statsBody")}</div>}</>;
 }
-
 function CodeTab({ code, setCode, result, onRun }: { code: string; setCode: (value: string) => void; result: JsonMap | null; onRun: () => void }) { const { t } = useI18n(); return <><div className="canvas-header"><div><p className="eyebrow">REPRODUCIBLE CODE</p><h2>{t("pythonEditor")}</h2></div><button className="primary" onClick={onRun}>{t("validateRun")}</button></div><div className="security-note">{t("securityNote")}</div><div className="editor-shell"><Editor height="410px" language="python" theme="vs-dark" value={code} onChange={(value) => setCode(value ?? "")} options={{ minimap: { enabled: false }, fontSize: 14, padding: { top: 16 } }} /></div>{result && <pre className={result.ok ? "result-console" : "result-console error"}>{JSON.stringify(result, null, 2)}</pre>}</>;
 }
 

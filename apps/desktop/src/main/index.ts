@@ -15,11 +15,23 @@ let isQuitting = false;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function logMain(message: string): Promise<void> {
+function sanitizeLogMessage(value: unknown): string {
+  let text = String(value);
+  text = text.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>");
+  text = text.replace(/(api[-_ ]?key|password|passwd|access[-_ ]?token|authorization|secret)(\s*[:=]\s*)([^\s,;]+)/gi, "$1$2<redacted>");
+  text = text.replace(/(?:file:\/\/\/)?[A-Z]:\\[^\r\n\t"'<>|]+/gi, "<local-path>");
+  text = text.replace(/\/(?:Users|home)\/[^/\s]+/gi, "<user-home>");
+  text = text.replace(/(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}(?![A-Z0-9._%+-])/gi, "<email>");
+  text = text.replace(/(?<!\d)(?:\+?86)?1[3-9]\d{9}(?!\d)/g, "<phone>");
+  text = text.replace(/(?<!\d)\d{17}[0-9Xx](?!\d)/g, "<identity-number>");
+  return text.slice(0, 4000);
+}
+
+async function logMain(message: unknown): Promise<void> {
   try {
     const directory = app.getPath("logs");
     await mkdir(directory, { recursive: true });
-    await appendFile(path.join(directory, "main.log"), `${new Date().toISOString()} ${message}\n`, "utf8");
+    await appendFile(path.join(directory, "main.log"), `${new Date().toISOString()} ${sanitizeLogMessage(message)}\n`, "utf8");
   } catch {
     // Logging must never crash the application.
   }
@@ -90,7 +102,7 @@ async function startSidecar(): Promise<void> {
     windowsHide: true,
     stdio: "pipe"
   });
-  await logMain(`starting sidecar executable=${executable} cwd=${root}`);
+  await logMain(`starting sidecar mode=${app.isPackaged ? "packaged" : "development"} executable=${path.basename(executable)}`);
   sidecar.on("error", (error) => { void logMain(`sidecar spawn error ${error.stack ?? String(error)}`); });
   sidecar.stderr.on("data", (chunk) => {
     const line = String(chunk).trimEnd();
@@ -149,7 +161,7 @@ function registerIpc(): void {
 
 async function createWindow(): Promise<void> {
   const preloadPath = path.join(__dirname, "../preload/index.cjs");
-  await logMain(`creating window preload=${preloadPath}`);
+  await logMain(`creating window preload=${path.basename(preloadPath)}`);
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 940,
@@ -187,6 +199,7 @@ async function createWindow(): Promise<void> {
         const created = await request("/api/projects", { directory: projectDirectory, name: "Packaged golden path", language: "en" });
         const imported = await request("/api/datasets/import", { projectDirectory, path: ${JSON.stringify(dataPath)} });
         const versionId = imported.version.id;
+        if (imported.preview.privacy?.status !== "clear") throw new Error("Privacy scan unexpectedly flagged the golden dataset");
         const suggestedSemantics = await request("/api/analysis/semantics/get", { projectDirectory, versionId });
         if (suggestedSemantics.profile.confirmed) throw new Error("Semantic suggestion must require confirmation");
         const semantics = await request("/api/analysis/semantics/save", {
@@ -205,6 +218,9 @@ async function createWindow(): Promise<void> {
         }
         if (task.status !== "completed") throw new Error("Golden path task ended with " + task.status + ": " + (task.error || task.message));
         const sections = task.result.latest.report.sections;
+        const statistics = task.result.latest.statistics;
+        if (!statistics.status || !statistics.significance) throw new Error("P0 statistical evidence metadata is missing");
+        if (!sections.some((section) => section.id === "statistics" && section.markdown.includes("Suitability status"))) throw new Error("P0 statistical evidence is missing from the report");
         const csv = await request("/api/datasets/export", { projectDirectory, versionId, format: "csv" });
         const xlsx = await request("/api/datasets/export", { projectDirectory, versionId, format: "xlsx" });
         const pdf = await request("/api/reports/export", { projectDirectory, title: "Golden path report", sections, language: "en", format: "pdf", versionId, planId: planned.plan.id });
@@ -215,9 +231,12 @@ async function createWindow(): Promise<void> {
           hasAida: typeof window.aida === "object",
           projectId: created.id,
           rowCount: imported.preview.rowCount,
+          privacyStatus: imported.preview.privacy.status,
           planStatus: task.plan.status,
           artifactKinds: task.result.artifacts.map((artifact) => artifact.kind).sort(),
           semanticConfirmed: semantics.profile.confirmed && task.result.latest.report.semanticProfile?.confirmed,
+          statisticalMethod: statistics.method,
+          statisticalStatus: statistics.status,
           reportSections: sections.length,
           exports: { csvBytes: csv.bytes, xlsxBytes: xlsx.bytes, pdfBytes: pdf.bytes, zipBytes: bundle.bytes, zipIncludesData: bundle.includedData }
         };
@@ -238,10 +257,7 @@ async function createWindow(): Promise<void> {
       }
       try { await rm(testRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 }); }
       catch (error) { await logMain(`golden-test cleanup deferred ${String(error)}`); }
-      setTimeout(() => {
-        const killer = spawn("taskkill", ["/PID", String(process.pid), "/T", "/F"], { detached: true, windowsHide: true, stdio: "ignore" });
-        killer.unref();
-      }, 250);
+      setTimeout(() => app.exit(Number(process.exitCode ?? 0)), 250);
     }
     return;
   }
@@ -258,7 +274,7 @@ app.whenReady().then(async () => {
   registerIpc();
   try { await startSidecar(); } catch (error) {
     await logMain(`sidecar startup failed ${error instanceof Error ? error.stack : String(error)}`);
-    dialog.showErrorBox("分析服务启动失败", String(error));
+    dialog.showErrorBox("分析服务启动失败", sanitizeLogMessage(error));
   }
   await createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });

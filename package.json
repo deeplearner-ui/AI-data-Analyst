@@ -1,6 +1,6 @@
 {
   "name": "ai-data-analyst",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {

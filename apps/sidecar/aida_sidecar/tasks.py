@@ -6,6 +6,7 @@ from threading import Event, Lock
 from typing import Any
 
 from .models import new_id, now_iso
+from .privacy import sanitize_diagnostic
 from .store import ProjectStore
 from .workflow import execute_plan
 
@@ -71,11 +72,12 @@ class PlanTaskManager:
                 task["message"] = {"completed": "Completed", "failed": "Failed", "cancelled": "Cancelled"}[task["status"]]
                 task["updatedAt"] = now_iso()
         except Exception as error:
+            diagnostic = sanitize_diagnostic(error)
             with self._lock:
                 task = self._tasks[task_id]
                 task["status"] = "failed"
-                task["error"] = str(error)
-                task["message"] = str(error)
+                task["error"] = diagnostic
+                task["message"] = diagnostic
                 task["updatedAt"] = now_iso()
 
     def cancel(self, task_id: str, project_directory: str | None = None) -> dict[str, Any]:

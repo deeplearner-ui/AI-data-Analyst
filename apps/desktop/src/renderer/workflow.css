@@ -365,6 +365,116 @@
   width: 100%;
 }
 
+.evidence-config {
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  align-items: end;
+}
+
+.evidence-config input,
+.evidence-config select {
+  width: 100%;
+}
+
+.stats-fields {
+  grid-column: 1 / -1;
+}
+
+.evidence-result {
+  display: grid;
+  gap: 14px;
+}
+
+.evidence-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 12px 14px;
+  border: 1px solid #cfe4d9;
+  border-radius: 9px;
+  color: #235747;
+  background: #edf7f2;
+  font-size: 12px;
+}
+
+.evidence-status.warning {
+  border-color: #e4c984;
+  color: #785812;
+  background: #fff8e5;
+}
+
+.evidence-status.not-applicable {
+  border-color: #dfb0aa;
+  color: #813a34;
+  background: #fff0ee;
+}
+
+.assumption-panel {
+  border: 1px solid #dce4df;
+  border-radius: 9px;
+  background: #fbfcfa;
+}
+
+.assumption-panel summary {
+  padding: 11px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.assumption-panel pre {
+  max-height: 280px;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border-top: 1px solid #e4e9e6;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.comparison-table h3 {
+  padding: 0 12px;
+}
+
+.privacy-scan {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 1.4fr);
+  gap: 18px;
+  margin: 0 0 22px;
+  padding: 18px 20px;
+  border: 1px solid #bfd8cc;
+  border-left: 5px solid #338067;
+  border-radius: 12px;
+  background: #f2faf6;
+}
+
+.privacy-scan.warning,
+.privacy-scan.sensitive {
+  border-color: #e6c27a;
+  border-left-color: #bd7621;
+  background: #fff8e8;
+}
+
+.privacy-scan p {
+  margin: 6px 0 9px;
+  color: #53665f;
+}
+
+.privacy-findings {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+}
+
+.privacy-findings span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border: 1px solid rgba(99, 112, 105, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
 @media (max-width: 1250px) {
   .clean-layout,
   .stats-config {

@@ -7,6 +7,7 @@ import pandas as pd
 
 from .analysis import audit, chart, clean, eda, json_value, model, statistical_test, time_series
 from .datasets import load_version, preview_frame, save_derived
+from .privacy import sanitize_diagnostic
 from .models import new_id, now_iso
 from .reporting import build_report
 from .store import ProjectStore
@@ -56,9 +57,9 @@ def semantic_profile_suggestion(frame: pd.DataFrame) -> dict[str, Any]:
 def _automatic_statistics(frame: pd.DataFrame, profile: dict[str, Any] | None = None) -> tuple[str, list[str], dict[str, Any]] | None:
     roles = _analysis_roles(frame, profile)
     if roles["target"] and roles["categorical"]:
-        return "chi-square", [roles["target"], roles["categorical"][0]], {"selectionReason": "binary-target-and-categorical-predictor"}
+        return "auto", [roles["target"], roles["categorical"][0]], {"selectionReason": "binary-target-and-categorical-predictor", "analysisGoal": "relationship"}
     if len(roles["numeric"]) >= 2:
-        return "pearson", roles["numeric"][:2], {"selectionReason": "two-meaningful-numeric-fields"}
+        return "auto", roles["numeric"][:2], {"selectionReason": "two-meaningful-numeric-fields", "analysisGoal": "relationship"}
     return None
 
 
@@ -273,6 +274,23 @@ def _assumption_text(value: Any, language: str) -> str:
     return str(value or ("Review method-specific assumptions." if language == "en" else "需要复核该方法的适用条件。"))
 
 
+def _confidence_text(result: dict[str, Any], language: str) -> str:
+    interval = result.get("confidenceInterval")
+    if not interval:
+        return "Confidence interval not available for this method." if language == "en" else "当前方法暂未提供置信区间。"
+    level = float(result.get("significance", {}).get("confidenceLevel", .95)) * 100
+    return f"{level:.0f}% CI [{_format_number(interval[0])}, {_format_number(interval[1])}]"
+
+
+def _comparison_lines(result: dict[str, Any], language: str) -> list[str]:
+    comparisons = result.get("comparisons", [])
+    if not comparisons: return []
+    rows = ["### Multiplicity-adjusted post-hoc comparisons" if language == "en" else "### 多重比较校正后的事后检验"]
+    for item in comparisons:
+        rows.append(f"- **{item['left']} vs {item['right']}**: p={_format_number(item['pValue'])}, adjusted p={_format_number(item['adjustedPValue'])} ({item['adjustment']})." if language == "en" else f"- **{item['left']} 与 {item['right']}**：原始 p={_format_number(item['pValue'])}，校正后 p={_format_number(item['adjustedPValue'])}（{item['adjustment']}）。")
+    return rows
+
+
 def _report_sections(language: str, goal: str, frame: pd.DataFrame, artifacts: list[dict[str, Any]], profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     by_kind = {item["kind"]: item["payload"] for item in artifacts}
     audit_result = by_kind.get("audit", {})
@@ -347,7 +365,7 @@ def _report_sections(language: str, goal: str, frame: pd.DataFrame, artifacts: l
         deep_dive += ([f"- **{item['field']}**: positive mean {_format_number(item['positiveMean'])}, other mean {_format_number(item['otherMean'])}; standardized effect **d={_format_number(item['effectSize'], 2)}**, confidence {item['confidence']}." for item in numeric_target_profiles[:5]] or ["- No numeric target-group comparison met the minimum sample requirement."])
         deep_dive += ["", "### Ranked numeric relationships"]
         deep_dive += ([f"- **{left} ↔ {right}**: r={value:.2f} ({'strong' if abs(value) >= strong_correlation_threshold else 'moderate' if abs(value) >= .4 else 'weak'} linear relationship; strong threshold {strong_correlation_threshold:.2f})." for left, right, value in top_correlations] or ["- Fewer than two eligible numeric fields were available."])
-        stats_lines = ["No statistically suitable automatic comparison was available."] if not stats_result or stats_result.get("skipped") else [f"- Method: **{_method_label(stats_result.get('method', ''), language)}**", f"- Variables: **{' / '.join(stats_result.get('columns', []))}**", f"- Sample size: {_format_number(stats_result.get('sampleSize'), 0)}", f"- Statistic: {_format_number(stats_result.get('statistic'))}", f"- p-value: **{_format_number(stats_result.get('pValue'))}**", f"- Effect size: {_format_number(stats_result.get('effectSize'))}", f"- Assumptions: {_assumption_text(stats_result.get('assumptions'), language)}", "- Interpretation: statistical association does not by itself establish causation."]
+        stats_lines = ["No statistically suitable automatic comparison was available."] if not stats_result or stats_result.get("skipped") else [f"- Selected method: **{_method_label(stats_result.get('method', ''), language)}** ({stats_result.get('recommendationReason', 'explicit-method')})", f"- Suitability status: **{stats_result.get('status', 'completed')}**", f"- Variables: **{' / '.join(stats_result.get('columns', []))}**", f"- Sample size: {_format_number(stats_result.get('sampleSize'), 0)}", f"- Estimate: {_format_number(stats_result.get('estimate'))} ({stats_result.get('estimateLabel', 'effect')})", f"- {_confidence_text(stats_result, language)}", f"- Statistic: {_format_number(stats_result.get('statistic'))}", f"- p-value: **{_format_number(stats_result.get('pValue'))}**", f"- Effect size: {_format_number(stats_result.get('effectSize'))}", f"- Assumptions: {_assumption_text(stats_result.get('assumptions'), language)}", f"- Alternatives: {', '.join(stats_result.get('alternatives', [])) or 'none suggested'}", "- Interpretation: statistical association does not by itself establish causation."] + _comparison_lines(stats_result, language)
         recommendations += ([f"P0 · Data owner · Address missingness in {', '.join(item['name'] for item in missing[:3])}; acceptance: document the cause and compare results before/after treatment."] if missing else ["P2 · Data owner · Preserve the current low-missingness baseline; acceptance: alert when any field exceeds 5% missingness."])
         if segment_profiles: recommendations.append(f"P1 · Analyst · Validate the {segment_profiles[0]['field']} segment gap against domain definitions and confounders; acceptance: reproduce the gap on a holdout or later time period.")
         if numeric_target_profiles: recommendations.append(f"P1 · Analyst · Test whether {numeric_target_profiles[0]['field']} remains informative in a multivariable model; acceptance: report adjusted effect and confidence interval.")
@@ -399,7 +417,7 @@ def _report_sections(language: str, goal: str, frame: pd.DataFrame, artifacts: l
         deep_dive += ([f"- **{item['field']}**：正向组均值 {_format_number(item['positiveMean'])}，其他组均值 {_format_number(item['otherMean'])}；标准化效应 **d={_format_number(item['effectSize'], 2)}**，置信度 {severity_labels[item['confidence']]}。" for item in numeric_target_profiles[:5]] or ["- 当前没有满足最小样本要求的数值目标组比较。"])
         deep_dive += ["", "### 数值关系排序"]
         deep_dive += ([f"- **{left} ↔ {right}**：r={value:.2f}（{'强' if abs(value) >= strong_correlation_threshold else '中等' if abs(value) >= .4 else '弱'}线性关系；强相关阈值 {strong_correlation_threshold:.2f}）。" for left, right, value in top_correlations] or ["- 可用数值字段少于两个，无法形成关系排序。"])
-        stats_lines = ["当前字段结构不足以支持有意义的自动统计比较，建议手工指定变量。"] if not stats_result or stats_result.get("skipped") else [f"- 方法：**{_method_label(stats_result.get('method', ''), language)}**", f"- 分析变量：**{' / '.join(stats_result.get('columns', []))}**", f"- 样本量：{_format_number(stats_result.get('sampleSize'), 0)}", f"- 统计量：{_format_number(stats_result.get('statistic'))}", f"- p 值：**{_format_number(stats_result.get('pValue'))}**", f"- 效应量：{_format_number(stats_result.get('effectSize'))}", f"- 方法假设：{_assumption_text(stats_result.get('assumptions'), language)}", "- 解释：统计关联本身不能证明因果关系，需要结合研究设计与业务背景判断。"]
+        stats_lines = ["当前字段结构不足以支持有意义的自动统计比较，建议手工指定变量。"] if not stats_result or stats_result.get("skipped") else [f"- 自动选择方法：**{_method_label(stats_result.get('method', ''), language)}**（{stats_result.get('recommendationReason', 'explicit-method')}）", f"- 适用性状态：**{stats_result.get('status', 'completed')}**", f"- 分析变量：**{' / '.join(stats_result.get('columns', []))}**", f"- 样本量：{_format_number(stats_result.get('sampleSize'), 0)}", f"- 估计值：{_format_number(stats_result.get('estimate'))}（{stats_result.get('estimateLabel', 'effect')}）", f"- {_confidence_text(stats_result, language)}", f"- 统计量：{_format_number(stats_result.get('statistic'))}", f"- p 值：**{_format_number(stats_result.get('pValue'))}**", f"- 效应量：{_format_number(stats_result.get('effectSize'))}", f"- 方法假设：{_assumption_text(stats_result.get('assumptions'), language)}", f"- 替代方法：{'、'.join(stats_result.get('alternatives', [])) or '暂无'}", "- 解释：统计关联本身不能证明因果关系，需要结合研究设计与业务背景判断。"] + _comparison_lines(stats_result, language)
         recommendations += ([f"P0 · 数据负责人 · 处理 { '、'.join(item['name'] for item in missing[:3]) } 的缺失问题；验收标准：记录缺失原因，并对比处理前后结论。"] if missing else ["P2 · 数据负责人 · 保持当前低缺失率基线；验收标准：任一字段缺失率超过 5% 时触发提醒。"])
         if segment_profiles: recommendations.append(f"P1 · 分析人员 · 结合业务定义和潜在混杂因素复核 {segment_profiles[0]['field']} 的分群差异；验收标准：在留出样本或后续时间窗口中复现该差异。")
         if numeric_target_profiles: recommendations.append(f"P1 · 分析人员 · 检验 {numeric_target_profiles[0]['field']} 在多变量模型中是否仍有解释力；验收标准：报告调整后效应和置信区间。")
@@ -555,17 +573,18 @@ def execute_plan(
             step["status"] = "completed"
             step["logs"].append("Completed" if language == "en" else "执行完成")
         except Exception as error:
+            diagnostic = sanitize_diagnostic(error)
             step["status"] = "failed"
-            step["error"] = str(error)
-            step["logs"].append(str(error))
+            step["error"] = diagnostic
+            step["logs"].append(diagnostic)
             step["durationMs"] = round((perf_counter() - started) * 1000)
             plan["status"] = "failed"
             store.save_plan(plan)
-            store.audit("analysis.plan.failed", {"planId": plan_id, "stepId": step["id"], "error": str(error)})
+            store.audit("analysis.plan.failed", {"planId": plan_id, "stepId": step["id"], "error": diagnostic})
             latest = {item["kind"]: item["payload"] for item in artifacts}
-            result = {"plan": plan, "artifacts": artifacts, "latest": latest, "activeVersionId": current_version_id, "preview": preview_frame(frame), "error": str(error)}
+            result = {"plan": plan, "artifacts": artifacts, "latest": latest, "activeVersionId": current_version_id, "preview": preview_frame(frame), "error": diagnostic}
             if on_progress:
-                on_progress({"type": "error", "stepId": step["id"], "progress": index / total_steps if total_steps else 0, "message": str(error), "plan": plan})
+                on_progress({"type": "error", "stepId": step["id"], "progress": index / total_steps if total_steps else 0, "message": diagnostic, "plan": plan})
             return result
         step["durationMs"] = round((perf_counter() - started) * 1000)
         store.save_plan(plan)

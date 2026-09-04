@@ -19,6 +19,7 @@ from .models import (
     ReproducibilityRequest, SemanticProfileRequest, StatsRequest,
 )
 from .reporting import build_report, dataset_export, report_export, reproducibility_bundle
+from .privacy import privacy_scan, sanitize_diagnostic
 from .security import execute_python, validate_python
 from .store import ProjectStore
 from .workflow import execute_plan, semantic_profile_suggestion
@@ -35,7 +36,15 @@ def authorize(authorization: str | None = Header(default=None)) -> None:
 
 
 def fail(error: Exception) -> HTTPException:
-    return HTTPException(status_code=400, detail=str(error))
+    return HTTPException(status_code=400, detail=sanitize_diagnostic(error))
+
+
+def require_privacy_acknowledgement(store: ProjectStore, version_id: str, acknowledged: bool) -> dict[str, Any]:
+    frame, _ = load_version(store, version_id)
+    result = privacy_scan(frame)
+    if result["hasPersonalData"] and not acknowledged:
+        raise ValueError("Personal data risk detected. Review the privacy findings and explicitly acknowledge before export.")
+    return result
 
 
 def validate_report_references(store: ProjectStore, version_id: str | None, plan_id: str | None, sections: list[dict[str, Any]]) -> None:
@@ -59,7 +68,7 @@ def validate_report_references(store: ProjectStore, version_id: str | None, plan
 
 @app.get("/api/health", dependencies=[Depends(authorize)])
 def health() -> dict[str, Any]:
-    return {"status": "ok", "schemaVersion": SCHEMA_VERSION, "version": __version__, "capabilities": ["projects", "csv", "xlsx", "audit", "clean", "eda", "statistics", "models", "time-series", "plotly", "postgresql", "mysql", "ai-plan", "plan-execution", "artifacts", "reports", "semantic-profiles"]}
+    return {"status": "ok", "schemaVersion": SCHEMA_VERSION, "version": __version__, "capabilities": ["projects", "csv", "xlsx", "audit", "clean", "eda", "statistics", "models", "time-series", "plotly", "postgresql", "mysql", "local-plan", "plan-execution", "artifacts", "reports", "semantic-profiles", "privacy-scan"]}
 
 
 @app.post("/api/projects", dependencies=[Depends(authorize)])
@@ -129,9 +138,21 @@ def analysis_semantics_save(request: SemanticProfileRequest):
 def dataset_export_file(request: DatasetExportRequest):
     try:
         store = ProjectStore(request.project_directory)
+        privacy = require_privacy_acknowledgement(store, request.version_id, request.acknowledge_personal_data)
         result = dataset_export(store, request.version_id, request.format)
-        store.audit("dataset.exported", {"versionId": request.version_id, "format": request.format, "bytes": result["bytes"]})
-        return result
+        store.audit("dataset.exported", {
+            "versionId": request.version_id, "format": request.format, "bytes": result["bytes"],
+            "personalDataAcknowledged": request.acknowledge_personal_data, "privacyStatus": privacy["status"],
+        })
+        return result | {"privacy": privacy}
+    except Exception as error: raise fail(error) from error
+
+
+@app.post("/api/analysis/privacy/scan", dependencies=[Depends(authorize)])
+def analysis_privacy_scan(request: DatasetOperation):
+    try:
+        frame, version = load_version(ProjectStore(request.project_directory), request.version_id)
+        return {"versionId": version["id"], "privacy": privacy_scan(frame)}
     except Exception as error: raise fail(error) from error
 
 
@@ -245,9 +266,9 @@ async def ai_plan(request: PlanRequest):
         context = safe_context(frame, request.include_samples)
         profile = store.semantic_profile(request.version_id)
         if profile: context["semanticProfile"] = profile
-        plan = await create_plan(request.goal, manifest["id"], request.version_id, context, request.model, request.language)
+        plan = await create_plan(request.goal, manifest["id"], request.version_id, context, request.language)
         store.save_plan(plan)
-        store.audit("analysis.plan.created", {"planId": plan["id"], "goal": request.goal, "usedCloudModel": request.model is not None, "semanticProfileConfirmed": bool(profile and profile.get("confirmed"))})
+        store.audit("analysis.plan.created", {"planId": plan["id"], "goal": request.goal, "usedCloudModel": False, "semanticProfileConfirmed": bool(profile and profile.get("confirmed"))})
         return {"plan": plan, "contextPreview": context}
     except Exception as error: raise fail(error) from error
 
@@ -328,18 +349,33 @@ def report_build(request: ReportRequest):
 @app.post("/api/reports/export", dependencies=[Depends(authorize)])
 def report_export_file(request: ReportExportRequest):
     try:
-        validate_report_references(ProjectStore(request.project_directory), request.version_id, request.plan_id, request.sections)
+        store = ProjectStore(request.project_directory)
+        privacy = require_privacy_acknowledgement(store, request.version_id, request.acknowledge_personal_data)
+        validate_report_references(store, request.version_id, request.plan_id, request.sections)
         result = report_export(request.title, request.sections, request.language, request.format, request.version_id, request.plan_id, request.template)
-        ProjectStore(request.project_directory).audit("report.exported", {"reportId": result["reportId"], "format": request.format, "bytes": result["bytes"]})
-        return result
+        store.audit("report.exported", {
+            "reportId": result["reportId"], "format": request.format, "bytes": result["bytes"],
+            "personalDataAcknowledged": request.acknowledge_personal_data, "privacyStatus": privacy["status"],
+        })
+        return result | {"privacy": privacy}
     except Exception as error: raise fail(error) from error
 
 
 @app.post("/api/reports/reproducibility", dependencies=[Depends(authorize)])
 def report_bundle(request: ReproducibilityRequest):
     try:
-        validate_report_references(ProjectStore(request.project_directory), request.version_id, request.plan_id, request.sections)
+        store = ProjectStore(request.project_directory)
+        if request.include_data:
+            privacy = require_privacy_acknowledgement(store, request.version_id, request.acknowledge_personal_data)
+        else:
+            frame, _ = load_version(store, request.version_id)
+            privacy = privacy_scan(frame)
+        validate_report_references(store, request.version_id, request.plan_id, request.sections)
         result = reproducibility_bundle(request.project_directory, request.version_id, request.plan_id, request.title, request.sections, request.language, request.include_data, request.data_format, request.template)
-        ProjectStore(request.project_directory).audit("report.bundle.exported", {"versionId": request.version_id, "planId": request.plan_id, "includedData": request.include_data, "bytes": result["bytes"]})
-        return result
+        store.audit("report.bundle.exported", {
+            "versionId": request.version_id, "planId": request.plan_id, "includedData": request.include_data, "bytes": result["bytes"],
+            "personalDataAcknowledged": request.acknowledge_personal_data if request.include_data else False,
+            "privacyStatus": privacy["status"],
+        })
+        return result | {"privacy": privacy}
     except Exception as error: raise fail(error) from error

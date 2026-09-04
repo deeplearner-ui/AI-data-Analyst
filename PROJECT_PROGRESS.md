@@ -6,13 +6,13 @@
 
 | 字段 | 当前值 |
 | --- | --- |
-| 最后更新 | 2026-09-03（Asia/Shanghai） |
-| Desktop 版本 | 0.1.5 |
-| Python sidecar 版本 | 0.1.0 |
+| 最后更新 | 2026-09-04（Asia/Shanghai） |
+| Desktop 版本 | 0.1.7 |
+| Python sidecar 版本 | 0.1.7 |
 | Schema 版本 | 1.0 |
 | 工作目录 | D:\Projects\AI-data-Analyst |
-| 当前阶段 | 可执行 MVP 纵向切片；后台分析、可确认语义配置、十章证据报告 V3、多图表和模板化导出已接通，安装态 UI E2E 仍未完成 |
-| Git 状态 | 当前目录不是 Git 仓库，暂无提交历史 |
+| 当前阶段 | 可执行 MVP 纵向切片；已完成本地计划引擎、日志脱敏、个人信息检测与敏感导出确认，安装态 UI E2E 仍未完成 |
+| Git 状态 | 本地 Git 仓库 main 分支已建立；0.1.7 隐私与统计可信度版本已完成并纳入版本控制 |
 
 状态含义：
 
@@ -91,7 +91,7 @@ Renderer 已启用 contextIsolation 和 sandbox，不直接访问 Node.js、文�
 | 清洗结果 | 预览后应用去重、缺失处理、类型转换、文本标准化和 IQR 截尾 | 预览不写版本；确认后创建非破坏式版本，无变化时不创建重复版本 |
 | 分析计划 | 结构化步骤、逐步状态、耗时与错误 | 进程内后台顺序执行；界面轮询进度，可在步骤之间协作式取消 |
 | 探索分析 | 数值描述统计、分类频数、相关矩阵 | 已有独立页、API、结果契约和计划步骤产物 |
-| 统计结果 | 13 种常用统计方法及字段选择 | 完整假设检查、统一置信区间和多重比较仍待补充 |
+| 统计结果 | 13 种常用统计方法、自动选法、适用性状态、假设诊断、效应量、可用置信区间和多重比较 | 部分非参数及分类方法尚无统一置信区间；研究设计假设仍需用户确认 |
 | Python 结果 | JSON 结果或安全错误 | 未绑定步骤和数据版本 |
 | Plotly 图表 | 按已确认字段角色自动生成目标分组图和数值分布图 | 未确认前阻止生成计划；无图表配置器和独立产物浏览器 |
 | 数据库结果 | 字段、记录、行数、截断或提交结果 | 查询结果不进入 DatasetVersion |
@@ -133,16 +133,16 @@ Renderer 已启用 contextIsolation 和 sandbox，不直接访问 Node.js、文�
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | 基础 EDA | 界面可用 | 数值描述统计、分类频数和相关矩阵；尚无自动洞察与分布诊断 |
-| Welch t 检验 | 界面可用 | 固定取前两个数值字段 |
-| t、配对 t、Mann–Whitney、Wilcoxon | 界面可用 | 可选方法和数值字段，显示统计量、p 值与效应量（若方法支持） |
-| 正态性、卡方、Fisher、ANOVA、Kruskal | 界面可用 | 有字段数量提示；更完整的假设检查仍待实现 |
-| Pearson/Spearman/Kendall | 界面可用 | 可选两个数值字段；EDA 另有相关矩阵 |
-| 多重比较修正 | 仅 API | 使用 statsmodels multipletests |
+| 自动统计选法 | 界面可用 | 根据字段类型、分析目标、正态性、方差齐性和稀疏列联表选择方法，并说明推荐理由与替代方案 |
+| t、Welch、配对 t、Mann–Whitney、Wilcoxon | 界面可用 | 可选方法或自动选择；显示适用性、诊断、统计量、p 值、效应量及可用 CI |
+| 正态性、卡方、Fisher、ANOVA、Kruskal | 界面可用 | 稀疏 2×2 表自动使用 Fisher；多组检验可生成事后两两比较 |
+| Pearson/Spearman/Kendall | 界面可用 | 自动根据正态性选择 Pearson/Spearman；相关系数支持 Fisher-z CI（适用时） |
+| 多重比较修正 | 界面可用 | 事后比较支持 Holm、FDR BH 和 Bonferroni，并显示原始/调整后 p 值 |
 | 线性/逻辑回归 | 仅 API | 无变量角色、诊断和结果视图 |
 | PCA | 仅 API | 返回方差解释率和成分 |
 | K-Means/层次聚类 | 仅 API | 返回标签和数量 |
 | 时间序列分解 | 仅 API | additive decomposition 和基础自相关 |
-| 完整统计报告字段 | 部分实现 | CI、调整后 p 值和诊断未在所有方法中填充 |
+| 完整统计报告字段 | 部分实现 | 报告已纳入选法理由、适用性、诊断、估计、可用 CI、效应量和调整后 p 值；部分方法仍无 CI |
 
 ### 5.4 AI 编排
 
@@ -259,7 +259,7 @@ Renderer 已启用 contextIsolation 和 sandbox，不直接访问 Node.js、文�
 
 ### 中优先级
 
-- Desktop 为 0.1.5，sidecar 为 0.1.0，版本策略未统一。
+- Desktop 为 0.1.6，sidecar 为 0.1.0，版本策略未统一。
 - XLS 选择与实际依赖不一致。
 - 数据库密码表单没有调用已有 safeStorage。
 - 报告 Markdown 转换仍是轻量实现；字段角色已由用户确认，但质量评分、关键发现与图表选择仍是规则驱动，尚无领域词典、因果设计或模型复核。
@@ -271,6 +271,24 @@ Renderer 已启用 contextIsolation 和 sandbox，不直接访问 Node.js、文�
 ## 9. 验证记录
 
 ### 2026-09-03
+
+统计可信度 P0 增量执行：
+
+    packages\contracts\node_modules\.bin\tsc.CMD -p packages\contracts\tsconfig.json
+    apps\desktop\node_modules\.bin\electron-vite.CMD build
+    apps\sidecar\.venv\Scripts\python.exe -m pytest apps\sidecar\tests -q -p no:cacheprovider --basetemp D:\Projects\AI-data-Analyst\tmp\pytest-p0-full-2
+    apps\sidecar\.venv\Scripts\python.exe apps\sidecar\build_sidecar.py
+    electron-builder --win nsis --config.electronDist=D:\Projects\AI-data-Analyst\tmp\electron-37.3.1
+    release\win-unpacked\AI Data Analyst.exe --aida-golden-test
+
+结果：TypeScript 类型检查、Renderer/主进程生产构建、sidecar 构建与 NSIS 0.1.6 打包通过；Python 测试 `18 passed, 1 warning in 5.18s`。
+
+- 统计页默认采用自动选法，综合字段类型、用户选择的关系/独立/配对目标、Shapiro 正态性、Levene 方差齐性和列联表稀疏程度给出推荐方法。
+- 结果显式区分 `completed`、`warning` 和 `not-applicable`，样本不足不再抛出笼统异常；同时展示推荐理由、替代方法和需人工确认的研究设计假设。
+- 增加 alpha、置信水平、最小实际效应阈值和多重比较修正配置；结果区分统计显著与实际显著。
+- 均值差/配对均值差提供可配置置信区间，相关系数在适用时提供 Fisher-z 置信区间；报告同步呈现估计、CI、效应量和假设诊断。
+- ANOVA/Kruskal 可生成两两事后比较，并支持 Holm、FDR BH、Bonferroni 调整。
+- 0.1.6 win-unpacked 黄金路径通过：`semanticConfirmed=true`、`statisticalMethod=fisher`、`statisticalStatus=completed`、五类 Artifact 完整、`reportSections=10`；CSV/XLSX/PDF/ZIP 分别为 86/5813/47282/67333 bytes，ZIP 默认不含数据。
 
 语义配置与报告可信度增量执行：
 
@@ -450,9 +468,9 @@ Windows 打包：
 
 最新安装包位置：
 
-    apps\desktop\release\AI Data Analyst Setup 0.1.5.exe
+    apps\desktop\release\AI Data Analyst Setup 0.1.7.exe
 
-2026-09-03 17:48 最新构建：250,567,909 bytes，SHA-256 `B6C26C001993100FD1D9403CFA5C21DAB8895F661B703EA88F56D2A3684C3130`。该安装包未数字签名，已通过语义确认、缺失值脱敏样例、十章证据报告、多图表和 CSV/XLSX/PDF/ZIP 的 win-unpacked 自动黄金路径，但尚未执行 NSIS 安装后的真实 UI 点击验收。
+2026-09-04 11:21 最新构建：250,255,020 bytes，SHA-256 `0D80E0D707AC3258356F3E5F8E93B8361AD3B8DB8C7A4F51B2F50286B433D688`。该安装包未数字签名；21 项 Python 测试和 TypeScript 类型检查通过；win-unpacked 黄金路径确认 `privacyStatus=clear`、本地计划、Fisher 统计、五类 Artifact、十章报告及 CSV/XLSX/PDF/ZIP 导出完整。安装包、app.asar 与 sidecar 资源未发现用户目录、个人信息测试值或 OpenAI/DeepSeek/GLM 外部模型端点；NSIS 安装后的真实 UI 点击验收仍待完成。
 
 apps\desktop\dist 中是旧构建，不应继续用于验证。
 
@@ -461,12 +479,12 @@ apps\desktop\dist 中是旧构建，不应继续用于验证。
 这里只记录设计问题，不代表授权实现。
 
 1. 如何从现有进程内后台顺序任务升级为可恢复队列与依赖 DAG。
-2. 每种 AnalysisMethod 的参数 UI、适用性检查和失败/跳过语义。
+2. 为分类与非参数方法补齐统一置信区间，并增加更直观的残差/分布诊断与研究设计确认 UI。
 3. Artifact 浏览、引用校验、下游失效和清理策略。
 4. 如何在现有可确认语义配置上增加领域词典、配置模板、因果/时间口径和跨数据集映射。
 5. 后台任务、WebSocket、取消、超时、重试和恢复。
 6. 哪些步骤可自动执行，哪些需要审批。
-7. 假设检查、效应量、置信区间和多重比较的统一规范。
+7. 将已完成的统计可信度 P0 扩展到回归、时间序列、聚类和因果设计，并建立方法级审阅规范。
 8. 数据库查询的数据集化、刷新、采样、指纹和血缘。
 9. 连接配置和密码的保存策略。
 10. 大文件流式导出、可自由编排的多图布局，以及可保存的自定义报告模板。
@@ -534,6 +552,15 @@ apps\desktop\dist 中是旧构建，不应继续用于验证。
 | 2026-09-03 | 自动推断改为“建议后确认”的数据集语义配置 | 避免系统误把 ID、目标或分群字段用于统计结论，并让业务阈值进入报告 | 已实现并通过持久化、执行与导出回归 |
 | 2026-09-03 | 计划生成前必须确认语义配置 | 防止用户在字段含义未核对时直接产出貌似完整但口径错误的报告 | 已在界面禁用计划按钮并提供双语配置入口 |
 | 2026-09-03 | Desktop 版本提升至 0.1.5 | 明确区分语义确认版本与 0.1.4 的纯启发式报告 | 已构建并通过 win-unpacked 黄金路径 |
+
+| 2026-09-03 | 统计方法默认自动推荐，并用适用性状态代替笼统成功/失败 | 降低用户选错检验、忽略假设或把样本不足误解为系统故障的风险 | 已实现并增加回归测试 |
+| 2026-09-03 | 统计结论同时报告估计、可用 CI、效应量、统计显著与实际显著 | 避免仅凭 p 值作决策，并让用户阈值进入证据链 | 已实现基础规范，部分方法 CI 待补齐 |
+| 2026-09-03 | 多组检验的事后比较内置 Holm/FDR/Bonferroni 修正 | 控制多重检验带来的假阳性，并在界面和报告中保留原始与调整后证据 | 已实现 |
+| 2026-09-03 | Desktop 版本提升至 0.1.6 | 明确区分统计可信度 P0 与 0.1.5 语义确认版本 | 已构建并通过 win-unpacked 黄金路径 |
+| 2026-09-04 | 关闭外部模型网络出口，计划生成固定使用本地规则引擎 | 当前版本无需第三方模型，减少数据外发与密钥管理风险 | 已移除运行时 HTTP 客户端和模型配置入口，并增加拒绝远程模型回归测试 |
+| 2026-09-04 | 导入预览执行个人信息检测，敏感导出必须显式确认 | 发布前降低误导出个人信息风险，同时避免检测结果本身泄漏数据 | 已实现字段/值模式检测、无原始值结果、数据/报告/含数据 ZIP 拦截 |
+| 2026-09-04 | 主进程和工作流持久日志统一脱敏 | 避免本地路径、凭据和个人信息进入支持日志或项目审计日志 | 已覆盖路径、Bearer、密钥、邮箱、电话、身份证号和长度限制 |
+| 2026-09-04 | Desktop 与 sidecar 版本统一提升至 0.1.7 | 标识隐私与离线安全版本，并消除此前版本号不一致 | 21 项测试、类型检查、打包态黄金路径、安装包构建与隐私扫描均通过 |
 
 ## 14. 新对话接续提示词
 
